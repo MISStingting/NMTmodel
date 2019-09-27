@@ -5,7 +5,8 @@ import codecs
 
 VOCAB_SIZE_THRESHOLD = 50000
 
-tf.enable_eager_execution()
+
+# tf.enable_eager_execution()
 
 
 class EmbeddingInterface(abc.ABC):
@@ -55,57 +56,17 @@ class AbstractEmbedding(EmbeddingInterface):
         self.src_vocab_file = params["vocabs_features_file"]
         self.tgt_vocab_file = params["vocabs_labels_file"]
 
-        self.src_str2idx_table = lookup_ops.index_table_from_file(
-            self.src_vocab_file, default_value=self.unk_id)
-        self.src_idx2str_table = lookup_ops.index_to_string_table_from_file(
-            self.src_vocab_file, default_value=self.unk)
-        self.tgt_str2idx_table = lookup_ops.index_table_from_file(
-            self.tgt_vocab_file, default_value=self.unk_id)
-        self.tgt_idx2str_table = lookup_ops.index_to_string_table_from_file(
-            self.tgt_vocab_file, default_value=self.unk)
-        print(self.src_str2idx_table)
+    def encoder_embedding_input(self, inputs):
+        raise NotImplementedError()
+
+    def decoder_embedding_input(self, inputs):
+        raise NotImplementedError()
 
     def encoder_embedding(self):
         return self._encoder_embedding
 
     def decoder_embedding(self):
         return self._decoder_embedding
-
-    def encoder_embedding_input(self, inputs):
-        '''
-        source sequence embedding
-        embedding str2int
-        :param src:
-        :return:
-        '''
-        params = self.params
-        inputs_ids = self.src_str2idx_table.lookup(inputs)
-        print("inputs_ids:\n", inputs_ids)
-        vocab_size = params["src_vocab_size"]
-        embedding_size = params["src_embedding_size"]
-        with tf.variable_scope(self.embedding_scope, dtype=tf.float32, reuse=tf.AUTO_REUSE) as scope:
-            self._encoder_embedding = self._create_or_load_embedding(name="encoder_embed", vocab_size=vocab_size,
-                                                                     embedding_size=embedding_size,
-                                                                     embedding_file=None, vocab_file=None)
-            embedding_inputs = tf.nn.embedding_lookup(self._encoder_embedding, inputs_ids, name="embed_inputs")
-        return embedding_inputs,inputs_ids
-
-    def decoder_embedding_input(self, inputs):
-        '''
-        target sequence embedding
-        :param inputs:
-        :param params:
-        :return:
-        '''
-        params = self.params
-        target_inputs = self.tgt_str2idx_table.lookup(inputs)
-        vocab_size = params["tgt_vocab_size"]
-        embedding_size = params["tgt_embedding_size"]
-        self._decoder_embedding = self._create_or_load_embedding(name="decoder_embed", vocab_size=vocab_size,
-                                                                 embedding_size=embedding_size,
-                                                                 embedding_file=None, vocab_file=None)
-        embedding_inputs = tf.nn.embedding_lookup(self._decoder_embedding, target_inputs, name="embed_inputs")
-        return embedding_inputs
 
     def _create_or_load_embedding(self, name, vocab_size, embedding_size, embedding_file, vocab_file=None):
         '''
@@ -123,19 +84,6 @@ class AbstractEmbedding(EmbeddingInterface):
                 embedding = tf.get_variable(name=self.embedding_scope, dtype=tf.float32,
                                             shape=[vocab_size, embedding_size])
         return embedding
-
-    def _load_pretrained_embedding(self, embedding_file, vocab_file):
-        raise NotImplementedError()
-
-    @staticmethod
-    def _create_embedding_device(vocab_size):
-        if vocab_size > VOCAB_SIZE_THRESHOLD:
-            return "/cpu:0"
-        else:
-            return "/cpu:0"
-
-
-class NMTEmbedding(AbstractEmbedding):
 
     def _load_pretrained_embedding(self, embedding_file, vocab_file,
                                    num_trainable_tokens=3,
@@ -192,3 +140,59 @@ class NMTEmbedding(AbstractEmbedding):
                 else:
                     embedding_size = len(vec)
         return embedding_dict, embedding_size
+
+    @staticmethod
+    def _create_embedding_device(vocab_size):
+        if vocab_size > VOCAB_SIZE_THRESHOLD:
+            return "/cpu:0"
+        else:
+            return "/cpu:0"
+
+
+class NMTEmbedding(AbstractEmbedding):
+
+    def __init__(self, params, embedding_scope="embedding"):
+        super().__init__(params, embedding_scope)
+        self.src_str2idx_table = None
+        self.tgt_str2idx_table = None
+        self.tgt_idx2str_table = None
+
+    def encoder_embedding_input(self, inputs):
+        '''
+        source sequence embedding
+        embedding str2int
+        :param src:
+        :return:
+        '''
+        params = self.params
+        self.src_str2idx_table = lookup_ops.index_table_from_file(
+            self.src_vocab_file, default_value=self.unk_id)
+        inputs_ids = self.src_str2idx_table.lookup(inputs)
+        vocab_size = params["src_vocab_size"]
+        embedding_size = params["src_embedding_size"]
+        with tf.variable_scope(self.embedding_scope, dtype=tf.float32, reuse=tf.AUTO_REUSE) as scope:
+            self._encoder_embedding = self._create_or_load_embedding(name="encoder_embed", vocab_size=vocab_size,
+                                                                     embedding_size=embedding_size,
+                                                                     embedding_file=None, vocab_file=None)
+            embedding_inputs = tf.nn.embedding_lookup(self._encoder_embedding, inputs_ids, name="embed_inputs")
+        return embedding_inputs, inputs_ids
+
+    def decoder_embedding_input(self, inputs):
+        '''
+        target sequence embedding
+        :param inputs:
+        :param params:
+        :return:
+        '''
+        params = self.params
+        self.tgt_str2idx_table = lookup_ops.index_table_from_file(
+            self.tgt_vocab_file, default_value=self.unk_id)
+        target_inputs = self.tgt_str2idx_table.lookup(inputs)
+        vocab_size = params["tgt_vocab_size"]
+        embedding_size = params["tgt_embedding_size"]
+        with tf.variable_scope(self.embedding_scope, dtype=tf.float32, reuse=tf.AUTO_REUSE) as scope:
+            self._decoder_embedding = self._create_or_load_embedding(name="decoder_embed", vocab_size=vocab_size,
+                                                                     embedding_size=embedding_size,
+                                                                     embedding_file=None, vocab_file=None)
+            embedding_inputs = tf.nn.embedding_lookup(self._decoder_embedding, target_inputs, name="embed_inputs")
+        return embedding_inputs

@@ -4,6 +4,7 @@ from NMTmodel.NMT.embedding import NMTEmbedding
 from NMTmodel.NMT.dataset import data_util
 import yaml
 import os
+from tensorflow.python.ops import lookup_ops
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 par_dir = os.path.dirname(cur_dir)
@@ -11,7 +12,7 @@ par_dir = os.path.dirname(cur_dir)
 tf.enable_eager_execution()
 
 
-class EmbeddingTest(tf.test.TestCase):
+class NMTEmbeddingTest(tf.test.TestCase):
     def setUp(self):
         self.params = self._build_params()
         self.embedding = NMTEmbedding(params=self.params)
@@ -27,7 +28,7 @@ class EmbeddingTest(tf.test.TestCase):
         features, labels = data_util.get_dataset(self.params, mode=tf.estimator.ModeKeys.EVAL)
         inputs = features["input"]
         print("inputs:\n", inputs)
-        embedding_inputs = self.embedding.encoder_embedding_input(inputs=inputs)
+        embedding_inputs, _ = self.embedding.encoder_embedding_input(inputs=inputs)
         print("embedding_inputs:\n", embedding_inputs)
         print("\n")
         outputs_in = labels["output_in"]
@@ -48,6 +49,8 @@ class EmbeddingTest(tf.test.TestCase):
         embedding_inputs, inputs_id = self.embedding.encoder_embedding_input(inputs=inputs)
         print("embedding_inputs:\n", embedding_inputs)
         print("\n")
+        self.embedding.tgt_idx2str_table = lookup_ops.index_to_string_table_from_file(
+            vocabulary_file=self.params["vocabs_labels_file"], default_value="<blank>")
         labels = self.embedding.tgt_idx2str_table.lookup(keys=inputs_id)
         print("labels:", labels)
 

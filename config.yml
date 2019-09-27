@@ -1,15 +1,16 @@
-model_dir: "E:\\naivenmt-master\\NMTmodel\\data\\model"
-train_features_file: "E:\\naivenmt-master\\NMTmodel\\data\\train.ocr"
-train_labels_file: "E:\\naivenmt-master\\NMTmodel\\data\\train.std"
-eval_features_file: "E:\\naivenmt-master\\NMTmodel\\data\\dev.ocr"
-eval_labels_file: "E:\\naivenmt-master\\NMTmodel\\data\\dev.std"
-test_features_file: "E:\\naivenmt-master\\NMTmodel\\data\\test.ocr"
-test_labels_file: "E:\\naivenmt-master\\NMTmodel\\data\\test.std"
-vocabs_features_file: "E:\\naivenmt-master\\NMTmodel\\data\\source_vocab"
-vocabs_labels_file: "E:\\naivenmt-master\\NMTmodel\\data\\target_vocab"
+model_dir: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\model"
+train_features_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\train.ocr"
+train_labels_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\train.std"
+eval_features_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\dev.ocr"
+eval_labels_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\dev.std"
+test_features_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\test.ocr"
+test_labels_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\test.std"
+vocabs_features_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\source_vocab"
+vocabs_labels_file: "E:\\naivenmt-master\\NMTmodel\\NMT\\data\\target_vocab"
 
-src_embedding_size: 10
-tgt_embedding_size: 10
+src_embedding_size: 64
+tgt_embedding_size: 64
+num_units: 64
 src_max_len: 50
 tgt_max_len: 50
 num_encoder_layers: 4
@@ -17,17 +18,20 @@ num_decoder_layers: 4
 num_encoder_residual_layers: 4
 num_decoder_residual_layers: 4
 time_major: false
-forget_bias: false
+forget_bias: 1.0
 dropout: 0.5
 unit_type: "gru"
-encoder_type: "lstm"
-decoder_type: "lstm"
+encoder_type: "bi"
+decoder_type: "bi"
 reshuffle_each_iteration: true
 
-src_vocab_size: 3528
-tgt_vocab_size: 3531
-num_units: 8
-buffer_size: 10000
+learning_rate: 0.001
+optimizer: "sgd"
+max_gradient_norm: 0.5
+
+src_vocab_size: 3028
+tgt_vocab_size: 3603
+buffer_size: 1000
 repeat: -1
 random_seed: 5000
 beam_width: 2
@@ -36,7 +40,7 @@ num_parallel_calls: 2
 length_penalty_weight: 0.5
 infer_mode: "beam_search"
 
-batch_size: 2
+batch_size: 1
 infer_batch_size: 2
 save_summary_steps: 1000
 keep_checkpoint_max: 5

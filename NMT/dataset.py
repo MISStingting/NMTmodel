@@ -64,7 +64,7 @@ class Dataset(object):
                                                tf.TensorShape([]),
                                                tf.TensorShape([])),
                                            padding_values=(
-                                               tf.constant("</s>", dtype=tf.string),
+                                               tf.constant("<blank>", dtype=tf.string),
                                                tf.constant("<s>", dtype=tf.string),
                                                tf.constant("</s>", dtype=tf.string),
                                                0,

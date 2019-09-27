@@ -49,7 +49,7 @@ class AbstractDecoder(DecoderInterface):
         self.dtype = dtype
 
         self.embedding = embedding.decoder_embedding
-
+        self.num_unit = params["num_units"]
         self.time_major = params["time_major"]
         self.beam_width = params["beam_width"]
         self.length_penalty_weight = params["length_penalty_weight"]
@@ -68,12 +68,12 @@ class AbstractDecoder(DecoderInterface):
                 encoder_state=encoder_state,
                 source_sequence_length=src_seq_len)
             output_layer = tf.layers.Dense(
-                self.target_vocab_size, use_bias=False, name="output_projection")
+                self.num_unit, use_bias=False, name="output_projection")
 
             if mode != tf.estimator.ModeKeys.PREDICT:
                 helper = tf.contrib.seq2seq.TrainingHelper(
-                    inputs=labels['tgt_in'],
-                    sequence_length=labels['tgt_len'],
+                    inputs=labels['output_in'],
+                    sequence_length=labels['output_length'],
                     time_major=self.time_major)
                 decoder = tf.contrib.seq2seq.BasicDecoder(
                     cell=cell,
@@ -81,12 +81,13 @@ class AbstractDecoder(DecoderInterface):
                     initial_state=decoder_initial_state)
                 outputs, final_context_state, _ = tf.contrib.seq2seq.dynamic_decode(
                     decoder,
-                    output_time_major=self.time_major,
                     swap_memory=True,
-                    scope=scope)
+                    scope=scope,
+                    output_time_major=self.time_major)
                 sample_id = outputs.sample_id
                 logits = output_layer(outputs.rnn_output)
             else:
+                # Predict 模式
                 beam_width = self.beam_width
                 length_penalty_weight = self.length_penalty_weight
 

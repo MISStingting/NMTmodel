@@ -3,6 +3,8 @@ import tensorflow as tf
 from tensorflow.python.ops import lookup_ops
 from .dataset import data_util
 
+tf.enable_eager_execution()
+
 
 class AbstractModel(abc.ABC):
     def input_fn(self, params, mode):
@@ -43,24 +45,28 @@ class Seq2SeqModel(AbstractModel):
         src = features["input"]
         src_len = features["input_length"]
         # embedding source input
-        with tf.variable_scope(self.scope):
-            src_inputs = self.embedding.encoder_embedding_input(inputs=src)
-            encoder_outputs, encoder_states = self.encoder.encode(inputs=src_inputs, inputs_length=src_len, mode=mode,
-                                                                  params=params)
+        with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
+            sequence_inputs, input_ids = self.embedding.encoder_embedding_input(src)
+            encoder_outputs, encoder_states = self.encoder.encode(sequence_inputs=sequence_inputs,
+                                                                  sequence_length=src_len,
+                                                                  mode=mode)
             if params["time_major"]:
                 encoder_outputs = tf.transpose(encoder_outputs, perm=[1, 0, 2])
             # embedding target sequence
-            tgt_in = self.decoder.decoder_embedding_in(labels["output_in"])
-            tgt_out = self.decoder.decoder_embedding_out(labels["output_out"])
+            tgt_in, tgt_in_ids = self.embedding.encoder_embedding_input(labels["output_in"])
+            tgt_out, tgt_out_ids = self.embedding.encoder_embedding_input(labels["output_out"])
             tgt_len = labels["output_length"]
             new_labels = {
                 "output_in": tgt_in,
                 "output_out": tgt_out,
                 "output_length": tgt_len
             }
-        # decoder
-        logits, predict_ids, des_states = self.decoder.decode(mode, encoder_outputs, encoder_states, new_labels,
-                                                              src_len)
+            # decoder
+            logits, predict_ids, des_states = self.decoder.decode(mode=mode,
+                                                                  encoder_outputs=encoder_outputs,
+                                                                  encoder_state=encoder_states,
+                                                                  labels=new_labels,
+                                                                  src_seq_len=src_len)
         if mode == tf.estimator.ModeKeys.PREDICT:
             predictions = self._build_predictions(params, predict_ids)
             tf.add_to_collections("predictions", predictions)
@@ -69,13 +75,16 @@ class Seq2SeqModel(AbstractModel):
                 key: predictions
             }
             prediction_hooks = self._build_prediction_hooks()
-            return tf.estimator.EstimatorSpec(mode, predictions=predictions, export_outputs=export_outputs,
+            return tf.estimator.EstimatorSpec(mode=mode,
+                                              predictions=predictions,
+                                              export_outputs=export_outputs,
                                               prediction_hooks=prediction_hooks)
         loss = self.compute_loss(logits, new_labels, params)
         if mode == tf.estimator.ModeKeys.TRAIN:
             train_op = self._build_train_op(mode, params, loss)
             training_hooks = []
-            return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op, training_hooks=training_hooks)
+            return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op,
+                                              training_hooks=training_hooks)
         if mode == tf.estimator.ModeKeys.EVAL:
             eval_metric_ops = self._build_eval_metric(predict_ids, labels, src_len)
             evaluation_hooks = []
@@ -106,12 +115,15 @@ class Seq2SeqModel(AbstractModel):
         :return:
         """
         actual_labels = new_labels["output_out"]
-        batch_size, max_time_steps = tf.shape(actual_labels)
+        print("\nactual_labels:\n", actual_labels)
+        batch_size, max_time_steps = tf.shape(actual_labels)[0], tf.shape(actual_labels)[1]
         if params["time_major"]:
             actual_labels = tf.transpose(actual_labels, perm=[1, 0, 2])
+            max_time_steps = tf.shape(actual_labels)[0]
+            batch_size = tf.shape(actual_labels)[1]
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=actual_labels, logits=logits)
         target_weights = tf.sequence_mask(
-            lengths=new_labels['output_len'],
+            lengths=new_labels['output_length'],
             maxlen=max_time_steps,
             dtype=self.dtype)
         loss = tf.reduce_sum(cross_entropy * target_weights) / tf.to_float(
@@ -127,16 +139,11 @@ class Seq2SeqModel(AbstractModel):
             opt = tf.train.AdamOptimizer()
         else:
             raise ValueError("Unknown optimizer %s" % params.optimizer)
-        gradients = tf.gradients(
-            loss,
-            tf.trainable_variables(),
-            colocate_gradients_with_ops=params["colocate_gradients_with_ops"])
-        clipped_grads, grad_norm = tf.clip_by_global_norm(
-            gradients, clip_norm=params["max_gradient_norm"])
-        grads_and_vars = zip(clipped_grads, grad_norm)
-        train_op = opt.apply_gradients(
-            grads_and_vars,
-            tf.train.get_or_create_global_step())
+        trainable_params = tf.trainable_variables()
+        gradients = tf.gradients(loss, trainable_params)
+        clipped_grads, _ = tf.clip_by_global_norm(gradients, clip_norm=params["max_gradient_norm"])
+        grads_and_vars = zip(clipped_grads, trainable_params)
+        train_op = opt.apply_gradients(grads_and_vars, tf.train.get_or_create_global_step())
         return train_op
 
     @staticmethod
